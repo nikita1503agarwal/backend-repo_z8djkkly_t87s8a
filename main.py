@@ -1,8 +1,12 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, EmailStr
+from typing import Optional
 
-app = FastAPI()
+from database import create_document
+
+app = FastAPI(title="FlatRate HR API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -12,13 +16,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.get("/")
 def read_root():
-    return {"message": "Hello from FastAPI Backend!"}
+    return {"message": "FlatRate HR API running"}
+
 
 @app.get("/api/hello")
 def hello():
     return {"message": "Hello from the backend API!"}
+
 
 @app.get("/test")
 def test_database():
@@ -63,6 +70,37 @@ def test_database():
     response["database_name"] = "✅ Set" if os.getenv("DATABASE_NAME") else "❌ Not Set"
     
     return response
+
+
+# Lead submission model for contact/booking
+class LeadIn(BaseModel):
+    name: str
+    business_name: Optional[str] = None
+    email: EmailStr
+    phone: Optional[str] = None
+    employees: Optional[int] = None
+    message: Optional[str] = None
+    source: Optional[str] = "contact"
+
+
+@app.post("/api/leads")
+def create_lead(lead: LeadIn):
+    """Store marketing/contact leads into the database"""
+    try:
+        from schemas import Lead  # Pydantic schema used to define collection name
+        lead_doc = Lead(
+            name=lead.name,
+            business_name=lead.business_name or "",
+            email=str(lead.email),
+            phone=lead.phone or "",
+            employees=lead.employees or 0,
+            message=lead.message or "",
+            source=lead.source or "contact",
+        )
+        inserted_id = create_document("lead", lead_doc)
+        return {"status": "ok", "id": inserted_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":
